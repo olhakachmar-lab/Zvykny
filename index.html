@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zvykny</title>
+<meta name="description" content="Zvykny — a calm companion for intermittent fasting. Test build.">
+<meta name="theme-color" content="#F7F7F6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Zvykny">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/manrope-cyrillic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<div id="sheets"></div>
+<div id="splash" class="splash" aria-hidden="true">
+  <svg viewBox="0 0 120 120"><path class="arc" d="M60 14 A46 46 0 1 1 14 60" stroke="#3D6B5E" stroke-width="12" stroke-linecap="round" fill="none"/><circle class="dot" cx="27.5" cy="27.5" r="8" fill="#7FB3A3"/></svg>
+  <div class="word">zvykny</div>
+  <div class="tag"></div>
+</div>
+<script src="texts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
