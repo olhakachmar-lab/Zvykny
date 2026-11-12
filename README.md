@@ -1,6 +1,6 @@
 # Zvykny — a calm companion for intermittent fasting
 
-**Live test build:** https://olhakachmar-lab.github.io/zvykny/
+**Live test build:** https://olhakachmar-lab.github.io/Zvykny/
 
 Zvykny is a mobile web app (PWA) for women 30–55 who want to try intermittent fasting gently, without pressure or "streak" guilt. This repository holds the **test build** used in a multi-day usability study (diary study): participants install it on their phones and use it for 3–4 days.
 
