@@ -576,6 +576,38 @@ const SHEETS = {
       <button class="link" data-a="closeSheet">${t("later")}</button>`;
   },
   day(p) { return dayHTML(p.day); },
+  lateEnd() {
+    const c = S.current; if (!c) return "";
+    const goalEnd = c.start + c.goal * H, sel = tmp.lateSel || 0;
+    const opts = [[t("atGoal", { time: hm(goalEnd) }), goalEnd], [t("rightNow"), Date.now()]];
+    return `<h2>${t("lateTitle")}</h2><p class="sub">${t("lateSub", { done: dur(Date.now() - c.start), time: hm(goalEnd) })}</p>
+      <div class="stack">${opts.map(([lab], i) => `<button class="choice ${sel === i ? "on" : ""}" data-a="lateSel" data-v="${i}"><span>${lab}</span><span class="radio"></span></button>`).join("")}
+      <label class="choice ${sel === 2 ? "on" : ""}" data-a="lateSel" data-v="2"><span>${t("otherTime")}</span><span style="display:flex;gap:10px;align-items:center"><input type="time" id="lateTime" value="${tmp.lateTime || hm(goalEnd)}" style="border:0;background:var(--sunken);border-radius:10px;padding:6px 8px;font-size:15px"><span class="radio"></span></span></label></div>
+      <div style="height:18px"></div>
+      <button class="btn" data-a="lateSave">${t("endFast")}</button>
+      <button class="link" data-a="closeSheet">${t("stillFasting")}</button>`;
+  },
+  autoEnded(p) {
+    const f = S.fasts.find(x => x.id === p.id); if (!f) return "";
+    return `<h2>${t("autoTitle")}</h2><p class="sub">${t("autoSub", { h: CAP_H, time: hm(f.end) })}</p>
+      <div class="card" style="display:flex;justify-content:space-between"><span>${hm(f.start)} – ${hm(f.end)}</span><b>${durLong(f.end - f.start)}</b></div>
+      <div style="height:18px"></div>
+      <button class="btn" data-a="closeSheet">${t("looksRight")}</button>
+      <button class="link" data-a="editTimes" data-v="${f.id}">${t("changeTime")}</button>`;
+  },
+  editTimes(p) {
+    const f = S.fasts.find(x => x.id === p.id); if (!f) return "";
+    const sv = tmp.editStart || hm(f.start), ev = tmp.editEnd || hm(f.end);
+    const st = atTime(f.start, sv); let en = atTime(st, ev); while (en <= st) en += DAY;
+    const inp = (id, v) => `<input type="time" id="${id}" value="${v}" style="border:0;background:var(--sunken);border-radius:10px;padding:8px 10px;font-size:17px">`;
+    return `<h2>${t("editTimesTitle")}</h2><p class="sub">${t("editTimesSub")}</p>
+      <div class="choice"><span>${t("started")} · ${dateShort(new Date(st))}</span>${inp("editStart", sv)}</div>
+      <div class="choice" style="margin-top:10px"><span>${t("ended")} · ${dateShort(new Date(en))}</span>${inp("editEnd", ev)}</div>
+      <p class="cap" style="text-align:center;margin:14px 0">${durLong(en - st)} · ${en - st >= COUNT_MIN_H * H ? "✓" : t("notCounted")}</p>
+      <button class="btn" data-a="saveTimes" data-v="${f.id}">${t("save")}</button>
+      <button class="link danger" data-a="deleteFast" data-v="${f.id}">${t("deleteFast")}</button>
+      <button class="link muted" data-a="closeSheet">${t("cancel")}</button>`;
+  },
   log() {
     return `<h2>${t("shareLog")}</h2><p class="sub">${t("shareLogSub")}</p>
       <textarea class="field" id="logText" readonly style="min-height:220px;font-size:13px">${esc(shareLog())}</textarea>
@@ -622,6 +654,8 @@ function momentText(mo) {
     return `${time} · ${t("mHunger", { l: mo.l })} → ${act}`;
   }
   if (mo.k === "unwell") return `${time} · ${t("mUnwell")}`;
+  if (mo.k === "auto") return `${time} · ${t("mAuto")}`;
+  if (mo.k === "edited") return t("mEdited");
   return time;
 }
 function dayHTML(k) {
@@ -635,7 +669,8 @@ function dayHTML(k) {
   if (f) {
     const d = f.end - f.start, ok = d >= f.goal * H, cnt = d >= COUNT_MIN_H * H;
     body += `<div class="card sum"><div class="ring-wrap small">${ringSVG(64, d / (f.goal * H), 0, "fast")}</div><div><div style="font-size:24px;font-weight:500">${durLong(d)}</div><div class="cap">${t("fastedGoal", { g: hrs(f.goal) })}</div><span class="badge ${ok || (cnt && !live) ? "ok" : ""}">${live ? t("inProgress") : ok ? t("goalReached") : cnt ? t("endedEarly") : t("notCounted")}</span></div></div>
-      <div class="stats3"><div><span class="label">${t("started")}</span><b>${hm(f.start)}</b></div><div><span class="label">${t("ended")}</span><b>${live ? "—" : hm(f.end)}</b></div><div><span class="label">${t("rhythmLbl")}</span><b>${f.rhythm}</b></div></div>`;
+      <div class="stats3"><div><span class="label">${t("started")}</span><b>${hm(f.start)}</b></div><div><span class="label">${t("ended")}</span><b>${live ? "—" : hm(f.end)}</b></div><div><span class="label">${t("rhythmLbl")}</span><b>${f.rhythm}</b></div></div>
+      ${live ? "" : `<button class="smalllink saved" style="padding-left:0;display:block;margin:0 auto" data-a="editTimes" data-v="${f.id}">${t("changeTime")}</button>`}`;
     if (f.moments && f.moments.length) body += `<div class="blk"><div class="label">${t("moments")}</div>${f.moments.map(m => `<div style="font-size:15px;margin-bottom:6px">${esc(momentText(m))}</div>`).join("")}</div>`;
   } else body += `<p class="sub">${t("noFastDay")}</p>`;
   if (habitsDone.length) body += `<div class="blk"><div class="label">${t("habitsLbl")}</div><div class="chips">${habitsDone.map(h => `<span>${t("habits")[h][0]} ✓</span>`).join("")}</div></div>`;
@@ -648,13 +683,30 @@ function startFast(start) {
   S.current = { start, goal: goalOf(S.rhythm), rhythm: S.rhythm, moments: [] };
   save(); scheduleNotifs();
 }
-function endFast(reason) {
+function endFast(reason, endTs, quiet) {
   const c = S.current; if (!c) return;
-  if (reason === "unwell") c.moments.push({ t: Date.now(), k: "unwell" });
-  const f = { id: "f" + Date.now(), start: c.start, end: Date.now(), goal: c.goal, rhythm: c.rhythm, moments: c.moments };
+  const end = Math.max(c.start + MIN, Math.min(Date.now(), endTs || Date.now()));
+  if (reason === "unwell") c.moments.push({ t: end, k: "unwell" });
+  if (reason === "auto") c.moments.push({ t: end, k: "auto" });
+  const f = { id: "f" + Date.now(), start: c.start, end, goal: c.goal, rhythm: c.rhythm, moments: c.moments };
   S.fasts.push(f); S.current = null; save(); scheduleNotifs();
+  if (quiet) return f;
   sheet = null; sheetsEl.innerHTML = "";
   viewStack.length = 0; go("result", { id: f.id }, { replace: true });
+  return f;
+}
+/* Forgot to tap "End fast"? Ask on return; past the cap, close it at the goal time. */
+const CAP_H = 24;
+function checkOverrun() {
+  const c = S.current; if (!c || sheet) return;
+  const now = Date.now(), goalEnd = c.start + c.goal * H;
+  if (now - c.start > Math.max(CAP_H, c.goal + 8) * H) {
+    const f = endFast("auto", goalEnd, true);
+    viewStack.length = 0; V = { view: "home", params: {} }; render();
+    openSheet("autoEnded", { id: f.id });
+  } else if (now - goalEnd > 2 * H && !c.askedLate) {
+    c.askedLate = true; save(); tmp.lateSel = 0; openSheet("lateEnd");
+  }
 }
 let notifTimers = [];
 function notify(title, body) {
@@ -720,6 +772,24 @@ const ACTIONS = {
   saveSettings() { const n = document.getElementById("setName"); if (n) { S.profile.name = n.value.trim(); save(); } closeSheet(); render(); },
   shareLog() { sheet = { name: "log", params: {} }; renderSheet(false); },
   addCal() { addToCalendar(); },
+  lateSel(v) { tmp.lateSel = +v; const lt = document.getElementById("lateTime"); if (lt) tmp.lateTime = lt.value; renderSheet(false); },
+  lateSave() {
+    const c = S.current; if (!c) return closeSheet();
+    const lt = document.getElementById("lateTime"); if (lt) tmp.lateTime = lt.value;
+    const goalEnd = c.start + c.goal * H, sel = tmp.lateSel || 0;
+    let end = sel === 0 ? goalEnd : sel === 1 ? Date.now() : (() => { let x = atTime(c.start, tmp.lateTime || hm(goalEnd)); while (x <= c.start) x += DAY; return x; })();
+    endFast(null, end);
+  },
+  editTimes(id) { tmp.editStart = null; tmp.editEnd = null; if (sheet) { sheet = { name: "editTimes", params: { id } }; renderSheet(false); } else openSheet("editTimes", { id }); },
+  saveTimes(id) {
+    const f = S.fasts.find(x => x.id === id); if (!f) return closeSheet();
+    const sv = document.getElementById("editStart").value, ev = document.getElementById("editEnd").value;
+    const st = atTime(f.start, sv); let en = atTime(st, ev); while (en <= st) en += DAY;
+    if (en > Date.now()) en = Date.now();
+    f.start = st; f.end = en; f.moments = (f.moments || []).filter(m => m.k !== "auto"); if (!f.moments.some(m => m.k === "edited")) f.moments.push({ t: Date.now(), k: "edited" });
+    save(); sheet = { name: "day", params: { day: dayKey(en) } }; renderSheet(false); render(); toast(t("timesFixed"));
+  },
+  deleteFast(id) { S.fasts = S.fasts.filter(x => x.id !== id); save(); closeSheet(); render(); },
   addCalGoogle() { addToGoogle(); },
   deleteAll() { sheet = { name: "confirmDelete", params: {} }; renderSheet(false); },
   deleteYes() { try { localStorage.removeItem(KEY); } catch (e) {} S = fresh(); sheet = null; sheetsEl.innerHTML = ""; viewStack.length = 0; go("welcome", {}, { replace: true }); },
@@ -780,11 +850,15 @@ function bindInputs() {
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-a]"); if (!el) return;
   if (el.tagName === "INPUT") return;
-  if (e.target.tagName === "INPUT") { if (el.dataset.a === "startSel") { tmp.startSel = 3; document.querySelectorAll('[data-a="startSel"]').forEach(x => x.classList.toggle("on", x === el)); } return; }
+  if (e.target.tagName === "INPUT") { if (el.dataset.a === "lateSel") { tmp.lateSel = 2; document.querySelectorAll('[data-a="lateSel"]').forEach(x => x.classList.toggle("on", x === el)); return; } if (el.dataset.a === "startSel") { tmp.startSel = 3; document.querySelectorAll('[data-a="startSel"]').forEach(x => x.classList.toggle("on", x === el)); } return; }
   const fn = ACTIONS[el.dataset.a]; if (!fn) return;
   e.preventDefault(); fn(el.dataset.v);
 });
-document.addEventListener("change", e => { if (e.target.id === "customTime") { tmp.customTime = e.target.value; tmp.startSel = 3; renderSheet(false); } });
+document.addEventListener("change", e => {
+  if (e.target.id === "customTime") { tmp.customTime = e.target.value; tmp.startSel = 3; renderSheet(false); }
+  if (e.target.id === "lateTime") { tmp.lateTime = e.target.value; tmp.lateSel = 2; renderSheet(false); }
+  if (e.target.id === "editStart" || e.target.id === "editEnd") { tmp.editStart = document.getElementById("editStart").value; tmp.editEnd = document.getElementById("editEnd").value; renderSheet(false); }
+});
 
 // live timer
 setInterval(() => {
@@ -799,7 +873,7 @@ setInterval(() => {
   }
 }, 1000);
 let lastFull = Date.now();
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { render(); scheduleNotifs(); } });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { render(); scheduleNotifs(); checkOverrun(); } });
 
 /* ---------- boot ---------- */
 function boot() {
@@ -807,7 +881,7 @@ function boot() {
   const tag = sp.querySelector(".tag"); if (tag) tag.textContent = t("tagline");
   history.replaceState({ v: "root" }, ""); history.pushState({}, "");
   render(); scheduleNotifs();
-  setTimeout(() => { sp.classList.add("out"); setTimeout(() => sp.remove(), 400); }, S.onboarded ? 1500 : 2100);
+  setTimeout(() => { sp.classList.add("out"); setTimeout(() => sp.remove(), 400); if (S.onboarded) checkOverrun(); }, S.onboarded ? 1500 : 2100);
 }
 boot();
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
