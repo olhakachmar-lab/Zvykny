@@ -129,7 +129,7 @@ window.TEXTS = {
 
     waterToday: "Вода сьогодні",
     waterSub: "Рахується протягом усього дня",
-    waterAmount: "{v} з 1,6 л",
+    waterAmount: "{v} з {g} л",
 
     noteTitle: "Нотатка на сьогодні",
     noteDayTitle: "Нотатка",
@@ -219,11 +219,16 @@ window.TEXTS = {
     addHabitHint: "Поруч із голодуванням можна мати до 3 звичок — щодня просто зроблено чи ні.",
     chooseHabit: "Обери звичку",
     addX: "Додати: {x}",
-    added: "Додано · тапни, щоб прибрати",
+    added: "Додано · тапни, щоб змінити ціль чи прибрати",
+    stepsGoal: "Скільки кроків на день?",
+    waterGoal: "Скільки води на день?",
+    stepsWord: "кроків",
+    litersWord: "л",
+    removeHabit: "Прибрати звичку",
     habits: {
-      water: ["Вода", "Тисни + за склянку · ціль 1,6 л"],
+      water: ["Вода", "Тисни + за склянку · ціль {l} л"],
       nosugar: ["Без цукру", "Відмічай щовечора"],
-      walk: ["Пройти 7 000 кроків", "Відмічай щовечора"],
+      walk: ["Пройти {n} кроків", "Відмічай щовечора"],
       protein: ["Білок у кожній страві", "Довше тримає ситість"],
       noalcohol: ["Без алкоголю", "Відмічай увечері"]
     },
@@ -231,7 +236,7 @@ window.TEXTS = {
 
     checkTitle: "Вечірня відмітка",
     checkSub: "Відміть, що сьогодні вдалося. Кожна звичка — просто ✓ або ні.",
-    waterCounted: "{n} з 8 склянок · {v} л — пораховано з твоїх натискань",
+    waterCounted: "{n} з {g} склянок · {v} л — пораховано з твоїх натискань",
     checkedToast: "Сьогодні відмічено ✓",
 
     monthsTitle: "Усі місяці",
@@ -401,7 +406,7 @@ window.TEXTS = {
 
     waterToday: "Water today",
     waterSub: "All day, fasting hours too",
-    waterAmount: "{v} of 1.6 L",
+    waterAmount: "{v} of {g} L",
 
     noteTitle: "Note for today",
     noteDayTitle: "Note",
@@ -491,11 +496,16 @@ window.TEXTS = {
     addHabitHint: "You can add up to 3 next to fasting — each day is simply done or not.",
     chooseHabit: "Choose a habit",
     addX: "Add {x}",
-    added: "Added · tap to remove",
+    added: "Added · tap to change the goal or remove",
+    stepsGoal: "How many steps a day?",
+    waterGoal: "How much water a day?",
+    stepsWord: "steps",
+    litersWord: "L",
+    removeHabit: "Remove habit",
     habits: {
-      water: ["Water", "Tap + per glass · goal 1.6 L a day"],
+      water: ["Water", "Tap + per glass · goal {l} L a day"],
       nosugar: ["No sweets", "Tick it each evening"],
-      walk: ["Walk 7,000 steps", "Tick it each evening"],
+      walk: ["Walk {n} steps", "Tick it each evening"],
       protein: ["Protein at every meal", "Keeps you fuller between meals"],
       noalcohol: ["No alcohol", "Tick it at your evening check-in"]
     },
@@ -503,7 +513,7 @@ window.TEXTS = {
 
     checkTitle: "Evening check-in",
     checkSub: "Tap what’s true for today. Each habit is simply ✓ or not.",
-    waterCounted: "{n} of 8 glasses · {v} L — counted from your taps",
+    waterCounted: "{n} of {g} glasses · {v} L — counted from your taps",
     checkedToast: "Checked in for today ✓",
 
     monthsTitle: "All months",

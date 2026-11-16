@@ -6,6 +6,7 @@ const H = 3600e3, MIN = 60e3, DAY = 24 * H;
 const RHYTHMS = { "13:11": 13, "14:10": 14, "16:8": 16, "18:6": 18 };
 const HABITS = ["water", "nosugar", "walk", "protein", "noalcohol"];
 const COUNT_MIN_H = 10;
+const GOALS = { walk: { def: 7000, min: 2000, max: 20000, step: 1000 }, water: { def: 8, min: 4, max: 14, step: 1 } }; // water in glasses of 0.2 L
 
 /* ---------- state ---------- */
 const fresh = () => ({
@@ -76,6 +77,19 @@ const vocative = (name) => {
   return name;
 };
 const goalOf = r => RHYTHMS[r] || 13;
+const hGoal = h => (S.habitGoals && S.habitGoals[h]) || (GOALS[h] && GOALS[h].def);
+const num = n => new Intl.NumberFormat(locale()).format(n);
+const liters = g => (g * 0.2).toFixed(1).replace(".", S.lang === "uk" ? "," : ".");
+const habitName = (h, g) => t("habits")[h][0].replace("{n}", num(g || hGoal(h))).replace("{l}", liters(g || hGoal(h)));
+const habitSub = (h, g) => t("habits")[h][1].replace("{n}", num(g || hGoal(h))).replace("{l}", liters(g || hGoal(h)));
+function goalStepper(h) {
+  if (!GOALS[h]) return "";
+  const g = tmp.goalVal || hGoal(h);
+  const label = h === "walk" ? `${num(g)} <small style="font-size:15px">${t("stepsWord")}</small>` : `${liters(g)} <small style="font-size:15px">${t("litersWord")}</small>`;
+  return `<div class="label" style="margin:18px 0 8px">${h === "walk" ? t("stepsGoal") : t("waterGoal")}</div>
+    <div class="stepper" style="margin-bottom:0;padding:12px 16px"><button data-a="goalStep" data-v="-1" aria-label="−">−</button><span class="val" style="font-size:34px">${label}</span><button data-a="goalStep" data-v="1" aria-label="+">+</button></div>
+    ${h === "walk" ? `<div class="chips" style="justify-content:center;margin-top:10px">${[5000, 7000, 10000, 12000].map(v => `<button class="${g === v ? "on" : ""}" data-a="goalSet" data-v="${v}">${num(v)}</button>`).join("")}</div>` : ""}`;
+}
 const counted = f => f.end - f.start >= COUNT_MIN_H * H;
 const fastsByDay = () => { const m = {}; for (const f of S.fasts) { const k = dayKey(f.end); if (!m[k] || (f.end - f.start) > (m[k].end - m[k].start)) m[k] = f; } return m; };
 const countedFasts = () => S.fasts.filter(counted);
@@ -405,12 +419,12 @@ function habitCardHTML() {
   for (const h of S.habits) {
     if (h === "water") {
       const n = log.water || 0;
-      const drops = Array.from({ length: 8 }, (_, i) => `<button data-a="water" data-v="${i < n ? -1 : 1}" aria-label="${i < n ? "−" : "+"}">${svgIcon.drop("#3E7689", i < n ? "#3E7689" : "none")}</button>`).join("");
+      const wg = hGoal("water"); const drops = Array.from({ length: wg }, (_, i) => `<button data-a="water" data-v="${i < n ? -1 : 1}" aria-label="${i < n ? "−" : "+"}">${svgIcon.drop("#3E7689", i < n ? "#3E7689" : "none")}</button>`).join("");
       const v = (n * 0.2).toFixed(1).replace(".", S.lang === "uk" ? "," : ".");
-      html += `<div class="habit-card"><div style="flex:1;min-width:0"><div class="row-between"><b>${t("waterToday")}</b><span class="cap" style="font-weight:600;color:var(--water)">${t("waterAmount", { v })}</span></div><div class="drops">${drops}</div></div><button class="plus water" data-a="water" data-v="1" aria-label="+">+</button></div>`;
+      html += `<div class="habit-card"><div style="flex:1;min-width:0"><div class="row-between"><b>${t("waterToday")}</b><span class="cap" style="font-weight:600;color:var(--water)">${t("waterAmount", { v, g: liters(hGoal("water")) })}</span></div><div class="drops">${drops}</div></div><button class="plus water" data-a="water" data-v="1" aria-label="+">+</button></div>`;
     } else {
       const done = !!log[h];
-      html += `<button class="habit-card habit-row ${done ? "on" : ""}" data-a="toggleHabitToday" data-v="${h}" role="switch" aria-checked="${done}"><span style="display:flex;gap:12px;align-items:center">${svgIcon.habit[h]}<span><b>${t("habits")[h][0]}</b><span class="cap">${done ? t("doneToday") : t("tapWhenDone")}</span></span></span><span class="radio check">${done ? svgIcon.check : ""}</span></button>`;
+      html += `<button class="habit-card habit-row ${done ? "on" : ""}" data-a="toggleHabitToday" data-v="${h}" role="switch" aria-checked="${done}"><span style="display:flex;gap:12px;align-items:center">${svgIcon.habit[h]}<span><b>${habitName(h)}</b><span class="cap">${done ? t("doneToday") : t("tapWhenDone")}</span></span></span><span class="radio check">${done ? svgIcon.check : ""}</span></button>`;
     }
   }
   if (S.habits.length < 3) html += `<button class="add-row" data-a="sheet" data-v="addHabit"><span>+ ${t("addHabit")}</span><span>${t("ofN", { n: S.habits.length })}</span></button>`;
@@ -480,8 +494,8 @@ function rhythmPageHTML() {
   const fastCount = days.filter(ts => { const f = byDay[dayKey(ts)]; return f && counted(f); }).length;
   const habitRows = S.habits.map(h => {
     let c = 0;
-    const cells = days.map(ts => { const k = dayKey(ts), log = S.habitLog[k] || {}, done = habitDone(h, log); if (done) c++; return k === todayK ? `<button class="wc today ${done ? "done" : ""}" data-a="toggleHabitToday" data-v="${h}" aria-label="${t("habits")[h][0]}">${done ? svgIcon.check : ""}</button>` : `<span class="wc ${done ? "done" : ""}">${done ? svgIcon.check : ""}</span>`; }).join("");
-    return `<div class="wrow"><div class="nm">${svgIcon.habit[h]}<span>${t("habits")[h][0]}</span></div>${cells}<span class="cnt">${c}/7</span></div>`;
+    const cells = days.map(ts => { const k = dayKey(ts), log = S.habitLog[k] || {}, done = habitDone(h, log); if (done) c++; return k === todayK ? `<button class="wc today ${done ? "done" : ""}" data-a="toggleHabitToday" data-v="${h}" aria-label="${habitName(h)}">${done ? svgIcon.check : ""}</button>` : `<span class="wc ${done ? "done" : ""}">${done ? svgIcon.check : ""}</span>`; }).join("");
+    return `<div class="wrow"><button class="nm" data-a="editHabit" data-v="${h}">${svgIcon.habit[h]}<span>${habitName(h)}</span></button>${cells}<span class="cnt">${c}/7</span></div>`;
   }).join("");
   return `<div class="screen">
     <div class="topbar"><h1 style="margin:0">${t("yourRhythm")}</h1><button class="back" data-a="go" data-v="home">${svgIcon.back}<span>${t("todayBack")}</span></button></div>
@@ -501,7 +515,7 @@ function rhythmPageHTML() {
     </div>
   </div>`;
 }
-function habitDone(h, log) { if (h === "water") return (log.water || 0) >= 8 || !!log.waterDone; return !!log[h]; }
+function habitDone(h, log) { if (h === "water") return (log.water || 0) >= hGoal("water") || !!log.waterDone; return !!log[h]; }
 function monthsHTML() {
   const now = new Date();
   const firstTs = Math.min(S.createdAt || Date.now(), ...S.fasts.map(f => f.start));
@@ -558,19 +572,29 @@ const SHEETS = {
   addHabit() {
     const sel = tmp.habitSel;
     return `<h2>${t("addHabitTitle")}</h2><p class="sub">${t("addHabitHint")}</p>
-      <div class="stack">${HABITS.map(h => { const added = S.habits.includes(h); const [a, b] = t("habits")[h];
-        return `<button class="choice ${sel === h || added ? "on" : ""}" data-a="habitSel" data-v="${h}"><span style="display:flex;gap:12px;align-items:center">${svgIcon.habit[h]}<span>${a}<small>${added ? t("added") : b}</small></span></span><span class="radio"></span></button>`; }).join("")}</div>
-      ${S.habits.length >= 3 && !S.habits.includes(sel) && sel ? `<p class="cap" style="margin-top:10px">${t("max3")}</p>` : ""}
+      <div class="stack">${HABITS.map(h => { const added = S.habits.includes(h); const g = sel === h && tmp.goalVal ? tmp.goalVal : hGoal(h);
+        return `<button class="choice ${sel === h || added ? "on" : ""}" data-a="habitSel" data-v="${h}"><span style="display:flex;gap:12px;align-items:center">${svgIcon.habit[h]}<span>${habitName(h, g)}<small>${added ? t("added") : habitSub(h, g)}</small></span></span><span class="radio"></span></button>`; }).join("")}</div>
+      ${sel && !S.habits.includes(sel) ? goalStepper(sel) : ""}
+      ${S.habits.length >= 3 && sel && !S.habits.includes(sel) ? `<p class="cap" style="margin-top:10px">${t("max3")}</p>` : ""}
       <div style="height:18px"></div>
-      <button class="btn" data-a="addHabit" ${sel && !S.habits.includes(sel) && S.habits.length < 3 ? "" : "disabled"}>${sel && !S.habits.includes(sel) ? t("addX", { x: t("habits")[sel][0] }) : t("chooseHabit")}</button>
+      <button class="btn" data-a="addHabit" ${sel && !S.habits.includes(sel) && S.habits.length < 3 ? "" : "disabled"}>${sel && !S.habits.includes(sel) ? t("addX", { x: habitName(sel, tmp.goalVal) }) : t("chooseHabit")}</button>
       <button class="link" data-a="closeSheet">${t("notNow")}</button>`;
+  },
+  habitEdit(p) {
+    const h = p.h;
+    return `<h2 style="display:flex;gap:10px;align-items:center">${svgIcon.habit[h]}${habitName(h, tmp.goalVal)}</h2><p class="sub">${habitSub(h, tmp.goalVal)}</p>
+      ${goalStepper(h)}
+      <div style="height:18px"></div>
+      ${GOALS[h] ? `<button class="btn" data-a="saveHabitGoal" data-v="${h}">${t("save")}</button>` : ""}
+      <button class="link danger" data-a="removeHabit" data-v="${h}">${t("removeHabit")}</button>
+      <button class="link muted" data-a="closeSheet">${t("cancel")}</button>`;
   },
   checkin() {
     const k = dayKey(Date.now()), log = S.habitLog[k] || {};
     tmp.check = tmp.check || Object.fromEntries(S.habits.map(h => [h, habitDone(h, log)]));
     const n = log.water || 0;
     return `<h2>${t("checkTitle")}</h2><p class="sub">${t("checkSub")}</p>
-      <div class="stack">${S.habits.map(h => `<button class="choice ${tmp.check[h] ? "on" : ""}" data-a="checkToggle" data-v="${h}" role="switch" aria-checked="${!!tmp.check[h]}"><span style="display:flex;gap:12px;align-items:center">${svgIcon.habit[h]}<span>${t("habits")[h][0]}${h === "water" ? `<small>${t("waterCounted", { n, v: (n * .2).toFixed(1).replace(".", S.lang === "uk" ? "," : ".") })}</small>` : ""}</span></span><span class="toggle"></span></button>`).join("")}</div>
+      <div class="stack">${S.habits.map(h => `<button class="choice ${tmp.check[h] ? "on" : ""}" data-a="checkToggle" data-v="${h}" role="switch" aria-checked="${!!tmp.check[h]}"><span style="display:flex;gap:12px;align-items:center">${svgIcon.habit[h]}<span>${habitName(h)}${h === "water" ? `<small>${t("waterCounted", { n, g: hGoal("water"), v: liters(n) })}</small>` : ""}</span></span><span class="toggle"></span></button>`).join("")}</div>
       <div style="height:18px"></div>
       <button class="btn" data-a="saveCheck">${t("save")}</button>
       <button class="link" data-a="closeSheet">${t("later")}</button>`;
@@ -673,7 +697,7 @@ function dayHTML(k) {
       ${live ? "" : `<button class="smalllink saved" style="padding-left:0;display:block;margin:0 auto" data-a="editTimes" data-v="${f.id}">${t("changeTime")}</button>`}`;
     if (f.moments && f.moments.length) body += `<div class="blk"><div class="label">${t("moments")}</div>${f.moments.map(m => `<div style="font-size:15px;margin-bottom:6px">${esc(momentText(m))}</div>`).join("")}</div>`;
   } else body += `<p class="sub">${t("noFastDay")}</p>`;
-  if (habitsDone.length) body += `<div class="blk"><div class="label">${t("habitsLbl")}</div><div class="chips">${habitsDone.map(h => `<span>${t("habits")[h][0]} ✓</span>`).join("")}</div></div>`;
+  if (habitsDone.length) body += `<div class="blk"><div class="label">${t("habitsLbl")}</div><div class="chips">${habitsDone.map(h => `<span>${habitName(h)} ✓</span>`).join("")}</div></div>`;
   body += `<div class="blk"><div class="label">${t("note")}</div>${note ? `<div class="notecard">${esc(note)}</div><button class="smalllink" style="padding-left:0" data-a="editNote" data-v="${k}">${t("editNote")}</button>` : `<button class="smalllink saved" style="padding-left:0;font-size:15px" data-a="editNote" data-v="${k}">${t("addNote")}</button>`}</div>`;
   return `<h2>${dateLong(date)}</h2>${body}<div style="height:16px"></div><button class="btn secondary" data-a="closeSheet">${t("close")}</button>`;
 }
@@ -759,13 +783,18 @@ const ACTIONS = {
     if (v === "end") { c.moments.push(mo); endFast(); return; }
     c.moments.push(mo); save(); viewStack.length = 0; go("home", {}, { replace: true });
   },
-  water(v) { const k = dayKey(Date.now()); const log = S.habitLog[k] = S.habitLog[k] || {}; log.water = Math.max(0, Math.min(8, (log.water || 0) + (+v))); save(); render(); },
+  water(v) { const k = dayKey(Date.now()); const log = S.habitLog[k] = S.habitLog[k] || {}; log.water = Math.max(0, Math.min(hGoal("water"), (log.water || 0) + (+v))); save(); render(); },
   saveNote(k) { const v = (document.getElementById("noteInput").value || "").trim(); if (v) S.notes[k] = v; else delete S.notes[k]; save(); if (sheet && sheet.params.backTo) { sheet = { name: "day", params: { day: k } }; renderSheet(false); } else closeSheet(); render(); },
   editNote(k) { sheet = { name: "note", params: { day: k, backTo: "day" } }; renderSheet(false); setTimeout(() => { const n = document.getElementById("noteInput"); n && n.focus(); }, 50); },
   dayBack(k) { sheet = { name: "day", params: { day: k } }; renderSheet(false); },
   day(k) { openSheet("day", { day: k }); },
-  habitSel(v) { if (S.habits.includes(v)) { S.habits = S.habits.filter(x => x !== v); save(); tmp.habitSel = null; render(); } else tmp.habitSel = v; renderSheet(false); },
-  addHabit() { const v = tmp.habitSel; if (v && !S.habits.includes(v) && S.habits.length < 3) { S.habits.push(v); save(); } closeSheet(); render(); },
+  habitSel(v) { if (S.habits.includes(v)) { tmp.goalVal = null; sheet = { name: "habitEdit", params: { h: v } }; renderSheet(false); return; } tmp.habitSel = v; tmp.goalVal = null; renderSheet(false); },
+  addHabit() { const v = tmp.habitSel; if (v && !S.habits.includes(v) && S.habits.length < 3) { S.habits.push(v); if (GOALS[v]) { S.habitGoals = S.habitGoals || {}; S.habitGoals[v] = tmp.goalVal || hGoal(v); } save(); } closeSheet(); render(); },
+  editHabit(h) { tmp.goalVal = null; openSheet("habitEdit", { h }); },
+  goalStep(v) { const h = sheet.params.h || tmp.habitSel, G = GOALS[h]; const cur = tmp.goalVal || hGoal(h); tmp.goalVal = Math.max(G.min, Math.min(G.max, cur + (+v) * G.step)); renderSheet(false); },
+  goalSet(v) { tmp.goalVal = +v; renderSheet(false); },
+  saveHabitGoal(h) { if (tmp.goalVal) { S.habitGoals = S.habitGoals || {}; S.habitGoals[h] = tmp.goalVal; save(); } closeSheet(); render(); },
+  removeHabit(h) { S.habits = S.habits.filter(x => x !== h); save(); closeSheet(); render(); },
   toggleHabitToday(h) { const k = dayKey(Date.now()); const log = S.habitLog[k] = S.habitLog[k] || {}; if (h === "water") log.waterDone = !habitDone("water", log); else log[h] = !log[h]; save(); render(); },
   checkToggle(h) { tmp.check[h] = !tmp.check[h]; renderSheet(false); },
   saveCheck() { const k = dayKey(Date.now()); const log = S.habitLog[k] = S.habitLog[k] || {}; for (const h of S.habits) { if (h === "water") log.waterDone = !!tmp.check[h]; else log[h] = !!tmp.check[h]; } save(); closeSheet(); toast(t("checkedToast")); render(); },

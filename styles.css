@@ -208,3 +208,6 @@ button.day:active{transform:scale(.92)}
 .radio.check{width:26px;height:26px;color:#fff}
 .habit-row.on .radio.check{background:var(--accent);border-color:var(--accent)}
 .habit-row.on .radio.check::after{display:none}
+.chips button{padding:8px 14px;border-radius:var(--r-pill);background:var(--surface);border:1px solid var(--line);font-size:14px;font-weight:600}
+.chips button.on{background:var(--accent-subtle);border-color:var(--accent);color:var(--accent)}
+button.nm{text-align:left}
