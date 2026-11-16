@@ -111,6 +111,54 @@ const svgIcon = {
   }
 };
 
+/* ---------- body rhythm (cycle-aware, experimental) ---------- */
+const daysBetween = (a, b) => Math.round((startOfDay(b) - startOfDay(a)) / DAY);
+function cycleInfo(ts = Date.now()) {
+  const c = S.cycle; if (!c || !c.on || !c.periods || !c.periods.length) return null;
+  const starts = c.periods.map(k => keyToDate(k).getTime()).filter(x => x <= startOfDay(ts)).sort((a, b) => a - b);
+  if (!starts.length) return null;
+  const last = starts[starts.length - 1], day = daysBetween(last, ts) + 1, L = c.length || 28, P = c.periodLen || 5;
+  if (c.mode === "irregular") return day <= P ? { phase: "menstrual", day, late: false, irregular: true } : { phase: null, day, irregular: true };
+  if (day > L + 10) return { phase: null, day, overdue: true };
+  const d = ((day - 1) % L) + 1, ov = L - 14;
+  const phase = d <= P ? "menstrual" : d < ov - 1 ? "follicular" : d <= ov + 1 ? "ovulatory" : "luteal";
+  return { phase, day: d, late: phase === "luteal" && d > L - 6, L };
+}
+function predictedPeriod(k) {
+  const c = S.cycle; if (!c || !c.on || c.mode === "irregular" || !c.periods || !c.periods.length) return false;
+  const last = keyToDate(c.periods.slice().sort().pop()).getTime(), L = c.length || 28, P = c.periodLen || 5;
+  const diff = daysBetween(last, keyToDate(k).getTime()); if (diff < L) return false;
+  return diff % L < P && diff < L * 3;
+}
+const isPeriodDay = k => { const c = S.cycle; if (!c || !c.on || !c.periods) return false; const ts = keyToDate(k).getTime(); return c.periods.some(p => { const d = daysBetween(keyToDate(p).getTime(), ts); return d >= 0 && d < (c.periodLen || 5); }); };
+function suggestedGoal() {
+  const ci = cycleInfo(); if (!ci || !ci.phase) return null;
+  const g = goalOf(S.rhythm);
+  if ((ci.phase === "menstrual" || ci.late) && g > 13) return 13;
+  return null;
+}
+function phaseChip() {
+  const ci = cycleInfo(); if (!ci) return "";
+  const label = ci.phase ? `${t("phase_" + ci.phase)} · ${t("cycleDay", { d: ci.day })}` : ci.overdue ? t("cycleOverdue") : t("cycleDay", { d: ci.day });
+  return `<button class="phase-chip ph-${ci.phase || "none"}" data-a="sheet" data-v="body"><span class="ph-dot"></span>${label}</button>`;
+}
+function energyRow() {
+  if (!S.cycle || !S.cycle.on) return "";
+  const k = dayKey(Date.now()), v = (S.energy || {})[k];
+  return `<div class="energy-row"><span class="cap">${t("energyQ")}</span><div class="energy-pills">${[1, 2, 3].map(i => `<button class="${v === i ? "on" : ""}" data-a="energy" data-v="${i}">${t("energy" + i)}</button>`).join("")}</div></div>`;
+}
+function bodyInsight() {
+  const E = S.energy || {}, keys = Object.keys(E); if (!S.cycle || !S.cycle.on) return null;
+  if (keys.length < 10) return t("bodyLearn", { n: Math.max(0, 10 - keys.length) });
+  const by = {}; keys.forEach(k => { const ci = cycleInfo(keyToDate(k).getTime() + 12 * H); if (ci && ci.phase) (by[ci.phase] = by[ci.phase] || []).push(E[k]); });
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const ph = Object.keys(by).filter(p => by[p].length >= 2); if (ph.length < 2) return t("bodyLearn", { n: 3 });
+  ph.sort((a, b) => avg(by[a]) - avg(by[b]));
+  const lo = ph[0], hi = ph[ph.length - 1];
+  if (avg(by[hi]) - avg(by[lo]) < 0.4) return t("bodyEven");
+  return t("bodyPattern", { lo: t("phaseIn_" + lo), hi: t("phaseIn_" + hi) });
+}
+
 /* ---------- calendar (.ics) ---------- */
 const isAndroid = () => /android/i.test(navigator.userAgent);
 function calTimes() { const s = nextDinner(), e = s + goalOf(S.rhythm) * H; return { s, e }; }
@@ -264,10 +312,11 @@ const SCREENS = {
       <div class="stack">${t("stages").map((x, i) => `<button class="choice ${S.profile.stage === i ? "on" : ""}" data-a="setStage" data-v="${i}">${x}<span class="radio"></span></button>`).join("")}</div>
       <p class="cap" style="margin-top:16px">${t("stageNote")}</p>
       <div class="grow" style="min-height:24px"></div>
-      <button class="btn" data-a="go" data-v="safety">${t("continue")}</button>
+      <button class="btn" data-a="stageNext">${t("continue")}</button>
       <button class="link muted" data-a="go" data-v="safety">${t("skip")}</button>
     </div>`;
   },
+  cycle() { return cycleFormHTML(true); },
   safety() {
     tmp.safety = tmp.safety || [false, false, false, false];
     const any = tmp.safety.some(Boolean);
@@ -359,6 +408,20 @@ const SCREENS = {
   months() { return monthsHTML(); }
 };
 
+function cycleFormHTML(screen) {
+  const c = S.cycle || {}, irr = c.mode ? c.mode === "irregular" : S.profile.stage === 1;
+  tmp.cyc = tmp.cyc || { last: (c.periods && c.periods.slice().sort().pop()) || dayKey(Date.now() - 10 * DAY), length: c.length || 28, periodLen: c.periodLen || 5, mode: irr ? "irregular" : "regular" };
+  const f = tmp.cyc;
+  const step = (k, lab) => `<div class="choice" style="margin-top:10px"><span>${lab}</span><span style="display:flex;align-items:center;gap:10px"><button class="mini-step" data-a="cycStep" data-v="${k}:-1" aria-label="−">−</button><b style="min-width:64px;text-align:center">${f[k]} ${t("daysShort")}</b><button class="mini-step" data-a="cycStep" data-v="${k}:1" aria-label="+">+</button></span></div>`;
+  const body = `<h1 style="${screen ? "" : "font-size:24px;margin-top:0"}">${t("cycleTitle")}</h1><p class="sub">${t(f.mode === "irregular" ? "cycleSubIrr" : "cycleSub")}</p>
+    <div class="pill-switch" style="display:flex;margin-bottom:12px"><button style="flex:1" class="${f.mode === "regular" ? "on" : ""}" data-a="cycMode" data-v="regular">${t("modeRegular")}</button><button style="flex:1" class="${f.mode === "irregular" ? "on" : ""}" data-a="cycMode" data-v="irregular">${t("modeIrregular")}</button></div>
+    <div class="choice"><span>${t("lastPeriod")}</span><input type="date" id="cycLast" value="${f.last}" max="${dayKey(Date.now())}" style="border:0;background:var(--sunken);border-radius:10px;padding:6px 8px;font-size:15px"></div>
+    ${f.mode === "regular" ? step("length", t("cycleLen")) : ""}
+    ${step("periodLen", t("periodLen"))}
+    <p class="cap" style="margin-top:14px">${t("cyclePrivacy")}</p>`;
+  if (screen) return `<div class="screen">${topbar(2, 5)}${body}<div class="grow" style="min-height:20px"></div><button class="btn" data-a="cycSave" data-v="screen">${t("cycleOn")}</button><button class="link muted" data-a="go" data-v="safety">${t("skip")}</button></div>`;
+  return `${body}<div style="height:16px"></div><button class="btn" data-a="cycSave">${t("save")}</button>${S.cycle && S.cycle.on ? `<button class="link danger" data-a="cycOff">${t("cycleOff")}</button>` : ""}<button class="link muted" data-a="sheet" data-v="settings">${t("back")}</button>`;
+}
 function langPill() { return `<div class="pill-switch" role="group" aria-label="Language"><button class="${S.lang === "uk" ? "on" : ""}" data-a="lang" data-v="uk">УКР</button><button class="${S.lang === "en" ? "on" : ""}" data-a="lang" data-v="en">EN</button></div>`; }
 
 function greeting() {
@@ -406,8 +469,10 @@ function homeHTML() {
     <h1 class="greet">${greet}</h1>
     <div class="row-between"><button class="chip" data-a="sheet" data-v="rhythm">${r} · ${t("rhythms")[r][0]} ${svgIcon.chev}</button><button class="textlink" data-a="go" data-v="rhythmPage">${t("myRhythm")}</button></div>
     <div class="ring-wrap" style="margin-top:14px">${ring}<div class="ring-center">${center}</div></div>
+    ${phaseChip() ? `<div style="margin-top:12px">${phaseChip()}</div>` : ""}
     <div class="today-row"><span class="label">${t("today")}</span><button class="smalllink ${noteSaved ? "saved" : ""}" data-a="sheet" data-v="note">${noteSaved ? t("noteSaved") : t("noteLink")}</button></div>
     ${habitCardHTML()}
+    ${energyRow()}
     <div style="margin-top:12px">${main}</div>
     <div class="info-strip" style="margin-top:16px">${strip}</div>
   </div>`;
@@ -467,7 +532,9 @@ function calendarHTML(year, month, interactive) {
   for (let d = 1; d <= days; d++) {
     const date = new Date(year, month, d), k = dayKey(date), f = byDay[k], fasted = f && counted(f);
     if (fasted) n++;
-    const cls = ["day", fasted ? "fasted" : "", k === todayK ? "today" : "", date.getTime() > now ? "future" : "", f && !fasted ? "part" : ""].join(" ");
+    let cls = ["day", fasted ? "fasted" : "", k === todayK ? "today" : "", date.getTime() > now ? "future" : "", f && !fasted ? "part" : ""].join(" ");
+    const pd = isPeriodDay(k) ? "pd" : predictedPeriod(k) ? "pp" : "";
+    if (pd) cls += " " + pd;
     cells += interactive && date.getTime() <= now ? `<button class="${cls}" data-a="day" data-v="${k}" aria-label="${dateLong(date)}">${d}</button>` : `<span class="${cls}">${d}</span>`;
   }
   const wd = t("wd").map(x => `<span class="wd">${x}</span>`).join("");
@@ -508,6 +575,7 @@ function rhythmPageHTML() {
       ${S.habits.length < 3 ? `<button class="add-row" data-a="sheet" data-v="addHabit"><span>+ ${t("addHabit")}</span><span>${t("ofN", { n: S.habits.length })}</span></button>` : ""}
     </div>
     <div class="ai" style="margin-top:22px"><span class="orb"></span><div><div class="who">AI</div><p>${aiInsight()}</p></div></div>
+    ${S.cycle && S.cycle.on && Object.keys(S.energy || {}).length >= 10 ? `<div class="ai" style="margin-top:12px"><span class="orb"></span><div><div class="who">AI · ${t("bodyTitle")}</div><p>${bodyInsight()}</p></div></div>` : ""}
     <div style="margin-top:14px">
       ${S.habits.length ? `<button class="link" data-a="sheet" data-v="checkin">${t("eveningCheck")}</button>` : ""}
       <button class="link" data-a="go" data-v="months">${t("allMonths")}</button>
@@ -543,13 +611,17 @@ const SHEETS = {
   startTime() {
     const now = Date.now(), sel = tmp.startSel == null ? 0 : tmp.startSel;
     const opts = [[t("justNow"), now], [t("hourAgo"), now - H], [t("twoHoursAgo"), now - 2 * H]];
-    const g = goalOf(S.rhythm);
+    const sg = suggestedGoal(), ci = cycleInfo();
+    if (tmp.useSuggest == null) tmp.useSuggest = !!sg;
+    const g = sg && tmp.useSuggest ? sg : goalOf(S.rhythm);
     const st = sel === 3 ? customStart() : opts[sel][1];
     const end = st + g * H, sameDay = dayKey(end) === dayKey(now);
     return `<h2>${t("startTimeTitle")}</h2><p class="sub">${t("startTimeSub")}</p>
       <div class="stack">${opts.map(([lab, ts], i) => `<button class="choice ${sel === i ? "on" : ""}" data-a="startSel" data-v="${i}"><span>${lab}</span><span style="display:flex;gap:14px;align-items:center"><span class="cap">${hm(ts)}</span><span class="radio"></span></span></button>`).join("")}
       <label class="choice ${sel === 3 ? "on" : ""}" data-a="startSel" data-v="3"><span>${t("otherTime")}</span><span style="display:flex;gap:10px;align-items:center"><input type="time" id="customTime" value="${tmp.customTime || hm(now - 30 * MIN)}" style="border:0;background:var(--sunken);border-radius:10px;padding:6px 8px;font-size:15px"><span class="radio"></span></span></label></div>
-      <p class="cap" style="text-align:center;margin:14px 0">${r(S.rhythm)} · ${sameDay ? t("endsToday", { time: hm(end) }) : t("endsTomorrow", { time: hm(end) })}</p>
+      ${sg ? `<div class="suggest"><span class="ph-dot ph-${ci.phase}"></span><div style="flex:1"><b>${t(ci.phase === "menstrual" ? "suggestMenstrual" : "suggestLuteal", { h: sg })}</b><div class="cap">${t("suggestWhy")}</div></div></div>
+      <div class="pill-switch" style="margin-top:10px;display:flex"><button style="flex:1" class="${tmp.useSuggest ? "on" : ""}" data-a="useSuggest" data-v="1">${hrs(sg)}</button><button style="flex:1" class="${!tmp.useSuggest ? "on" : ""}" data-a="useSuggest" data-v="0">${hrs(goalOf(S.rhythm))} · ${t("keepMine")}</button></div>` : ""}
+      <p class="cap" style="text-align:center;margin:14px 0">${hrs(g)} · ${sameDay ? t("endsToday", { time: hm(end) }) : t("endsTomorrow", { time: hm(end) })}</p>
       <button class="btn" data-a="startFast">${t("startFast")}</button>
       <button class="link" data-a="closeSheet">${t("cancel")}</button>`;
   },
@@ -600,6 +672,22 @@ const SHEETS = {
       <button class="link" data-a="closeSheet">${t("later")}</button>`;
   },
   day(p) { return dayHTML(p.day); },
+  cycle() { return cycleFormHTML(false); },
+  body() {
+    const ci = cycleInfo(); if (!ci) return cycleFormHTML(false);
+    const ph = ci.phase, ins = bodyInsight();
+    const tips = ph ? [["food", t("tip_" + ph + "_food")], ["move", t("tip_" + ph + "_move")], ["sleep", t("tip_" + ph + "_sleep")], ["fast", t("fast_" + ph + (ci.late ? "_late" : ""))]] : [];
+    const ic = { food: "🥗", move: "🚶‍♀️", sleep: "🌙", fast: "⏳" };
+    return `<h2 style="margin-bottom:4px;display:flex;gap:10px;align-items:center"><span class="ph-dot big ph-${ph || "none"}"></span>${ph ? t("phase_" + ph) : t("bodyTitle")}</h2><p class="cap" style="margin:0 0 12px">${t("cycleDay", { d: ci.day })}${ci.irregular ? " · " + t("modeIrregular").toLowerCase() : ""}</p>
+      <p class="sub">${ph ? t("about_" + ph + (ci.late ? "_late" : "")) : t(ci.overdue ? "overdueText" : "irregularText")}</p>
+      ${tips.map(([k, v]) => `<div class="tip"><span class="tip-ic">${ic[k]}</span><div><div class="label" style="margin-bottom:2px">${t("tipLbl_" + k)}</div><div style="font-size:15px">${v}</div></div></div>`).join("")}
+      ${energyRow()}
+      ${ins ? `<div class="ai" style="margin-top:16px"><span class="orb"></span><div><div class="who">AI</div><p style="font-size:15px">${ins}</p></div></div>` : ""}
+      <div style="height:14px"></div>
+      <button class="btn secondary" data-a="periodToday">${t("periodStarted")}</button>
+      <button class="link muted" data-a="sheet" data-v="cycle">${t("cycleSettings")}</button>
+      <p class="cap" style="text-align:center;margin-top:4px">${t("tipsDisclaimer")}</p>`;
+  },
   lateEnd() {
     const c = S.current; if (!c) return "";
     const goalEnd = c.start + c.goal * H, sel = tmp.lateSel || 0;
@@ -657,6 +745,7 @@ const SHEETS = {
       <div class="settings-row"><span>${t("language")}</span>${langPill()}</div>
       <div class="settings-row" style="display:block"><span class="cap">${t("yourName")}</span><input class="field" id="setName" maxlength="30" value="${esc(S.profile.name)}" placeholder="${t("namePh")}" style="margin-top:8px"></div>
       <button class="settings-row" data-a="sheet" data-v="rhythm"><span>${t("rhythm")}</span><span>${S.rhythm} · ${t("rhythms")[S.rhythm][0]}</span></button>
+      <button class="settings-row" data-a="sheet" data-v="cycle"><span>${t("bodyTitle")} <span class="tag-ai">beta</span></span><span>${S.cycle && S.cycle.on ? "✓" : "+"}</span></button>
       <button class="settings-row" data-a="sheet" data-v="calendar"><span>${t("calTitle")}</span><span>${S.calAdded ? (calOutdated() ? "↻" : "✓") : "+"}</span></button>
       <button class="settings-row" data-a="shareLog" style="display:block"><span style="font-weight:600">${t("shareLog")}</span><div class="cap" style="margin-top:4px">${t("shareLogSub")}</div></button>
       ${/demo/.test(location.search) ? `<button class="settings-row" data-a="demo"><span>${t("demoFill")}</span><span></span></button>` : ""}
@@ -678,6 +767,7 @@ function momentText(mo) {
     return `${time} · ${t("mHunger", { l: mo.l })} → ${act}`;
   }
   if (mo.k === "unwell") return `${time} · ${t("mUnwell")}`;
+  if (mo.k === "cycleGoal") return `${time} · ${t("mCycleGoal", { h: mo.h })}`;
   if (mo.k === "auto") return `${time} · ${t("mAuto")}`;
   if (mo.k === "edited") return t("mEdited");
   return time;
@@ -697,14 +787,18 @@ function dayHTML(k) {
       ${live ? "" : `<button class="smalllink saved" style="padding-left:0;display:block;margin:0 auto" data-a="editTimes" data-v="${f.id}">${t("changeTime")}</button>`}`;
     if (f.moments && f.moments.length) body += `<div class="blk"><div class="label">${t("moments")}</div>${f.moments.map(m => `<div style="font-size:15px;margin-bottom:6px">${esc(momentText(m))}</div>`).join("")}</div>`;
   } else body += `<p class="sub">${t("noFastDay")}</p>`;
+  const dci = cycleInfo(date.getTime() + 12 * H), en = (S.energy || {})[k];
+  if ((dci && dci.phase) || en) body += `<div class="blk"><div class="label">${t("bodyTitle")}</div><div class="chips">${dci && dci.phase ? `<span><span class="ph-dot ph-${dci.phase}" style="display:inline-block;margin-right:6px"></span>${t("phase_" + dci.phase)} · ${t("cycleDay", { d: dci.day })}</span>` : ""}${en ? `<span>${t("energyQ")} ${t("energy" + en)}</span>` : ""}</div></div>`;
   if (habitsDone.length) body += `<div class="blk"><div class="label">${t("habitsLbl")}</div><div class="chips">${habitsDone.map(h => `<span>${habitName(h)} ✓</span>`).join("")}</div></div>`;
   body += `<div class="blk"><div class="label">${t("note")}</div>${note ? `<div class="notecard">${esc(note)}</div><button class="smalllink" style="padding-left:0" data-a="editNote" data-v="${k}">${t("editNote")}</button>` : `<button class="smalllink saved" style="padding-left:0;font-size:15px" data-a="editNote" data-v="${k}">${t("addNote")}</button>`}</div>`;
   return `<h2>${dateLong(date)}</h2>${body}<div style="height:16px"></div><button class="btn secondary" data-a="closeSheet">${t("close")}</button>`;
 }
 
 /* ---------- actions ---------- */
-function startFast(start) {
-  S.current = { start, goal: goalOf(S.rhythm), rhythm: S.rhythm, moments: [] };
+function readCycForm() { const l = document.getElementById("cycLast"); if (l && l.value && tmp.cyc) tmp.cyc.last = l.value > dayKey(Date.now()) ? dayKey(Date.now()) : l.value; }
+function rerenderCyc() { if (sheet && sheet.name === "cycle") renderSheet(false); else render(); }
+function startFast(start, goalOverride) {
+  S.current = { start, goal: goalOverride || goalOf(S.rhythm), rhythm: S.rhythm, moments: goalOverride ? [{ t: start, k: "cycleGoal", h: goalOverride }] : [] };
   save(); scheduleNotifs();
 }
 function endFast(reason, endTs, quiet) {
@@ -751,7 +845,7 @@ function finishOnboarding() { S.onboarded = true; save(); viewStack.length = 0; 
 const ACTIONS = {
   back() { back(); },
   go(v) { go(v); },
-  sheet(v) { if (v === "rhythm") tmp.pickRhythm = S.rhythm; if (v === "startTime") { tmp.startSel = 0; tmp.customTime = null; } if (v === "addHabit") tmp.habitSel = null; if (v === "checkin") tmp.check = null; if (sheet) { sheet = { name: v, params: {} }; renderSheet(false); } else openSheet(v); },
+  sheet(v) { if (v === "rhythm") tmp.pickRhythm = S.rhythm; if (v === "startTime") { tmp.startSel = 0; tmp.customTime = null; tmp.useSuggest = null; } if (v === "cycle") tmp.cyc = null; if (v === "addHabit") tmp.habitSel = null; if (v === "checkin") tmp.check = null; if (sheet) { sheet = { name: v, params: {} }; renderSheet(false); } else openSheet(v); },
   closeSheet() { closeSheet(); },
   lang(v) { S.lang = v; document.documentElement.lang = v === "uk" ? "uk" : "en"; save(); render(); if (sheet) renderSheet(false); },
   already() { tmp.already = true; S.flowAlready = true; go("safety"); },
@@ -771,7 +865,17 @@ const ACTIONS = {
   pickRhythm(v) { tmp.pickRhythm = v; renderSheet(false); },
   saveRhythm() { const r = tmp.pickRhythm || S.rhythm; S.rhythm = r; if (S.current) { S.current.goal = goalOf(r); S.current.rhythm = r; scheduleNotifs(); } save(); closeSheet(); render(); if (calOutdated()) setTimeout(() => toast(t("calUpdate")), 400); },
   startSel(v) { tmp.startSel = +v; const ct = document.getElementById("customTime"); if (ct) tmp.customTime = ct.value; renderSheet(false); },
-  startFast() { const ct = document.getElementById("customTime"); if (ct) tmp.customTime = ct.value; const sel = tmp.startSel || 0; const st = sel === 3 ? customStart() : Date.now() - sel * H; startFast(st); closeSheet(); render(); },
+  startFast() { const ct = document.getElementById("customTime"); if (ct) tmp.customTime = ct.value; const sel = tmp.startSel || 0; const st = sel === 3 ? customStart() : Date.now() - sel * H; const sg = suggestedGoal(); startFast(st, sg && tmp.useSuggest ? sg : null); closeSheet(); render(); },
+  useSuggest(v) { tmp.useSuggest = v === "1"; renderSheet(false); },
+  stageNext() { if (S.profile.stage === 0 || S.profile.stage === 1) { tmp.cyc = null; go("cycle"); } else go("safety"); },
+  cycStep(v) { readCycForm(); const [k, d] = v.split(":"); const lim = { length: [21, 40], periodLen: [2, 9] }[k]; tmp.cyc[k] = Math.max(lim[0], Math.min(lim[1], tmp.cyc[k] + (+d))); rerenderCyc(); },
+  cycMode(v) { readCycForm(); tmp.cyc.mode = v; rerenderCyc(); },
+  cycSave(v) { readCycForm(); const f = tmp.cyc; S.cycle = Object.assign(S.cycle || {}, { on: true, mode: f.mode, length: f.length, periodLen: f.periodLen }); S.cycle.periods = Array.from(new Set([...(S.cycle.periods || []), f.last])).sort(); save(); if (v === "screen") go("safety"); else { closeSheet(); render(); toast(t("cycleSaved")); } },
+  cycOff() { if (S.cycle) S.cycle.on = false; save(); closeSheet(); render(); },
+  periodToday() { S.cycle = S.cycle || { on: true, mode: "regular", length: 28, periodLen: 5, periods: [] }; S.cycle.on = true; const k = dayKey(Date.now()); const ps = new Set(S.cycle.periods || []); ps.add(k); S.cycle.periods = [...ps].sort();
+    const st = S.cycle.periods.map(x => keyToDate(x).getTime()), gaps = []; for (let i = 1; i < st.length; i++) { const g = daysBetween(st[i - 1], st[i]); if (g >= 18 && g <= 45) gaps.push(g); } if (gaps.length && S.cycle.mode === "regular") { const l3 = gaps.slice(-3); S.cycle.length = Math.round(l3.reduce((a, b) => a + b, 0) / l3.length); }
+    save(); renderSheet(false); render(); toast(t("periodLogged")); },
+  energy(v) { S.energy = S.energy || {}; const k = dayKey(Date.now()); if (S.energy[k] === +v) delete S.energy[k]; else S.energy[k] = +v; save(); render(); if (sheet) renderSheet(false); },
   keepGoing() { closeSheet(); },
   endFast(v) { endFast(v); },
   level(v) { tmp.level = +v; render(); },
@@ -834,13 +938,16 @@ function shareLog() {
   L.push(`${t("rhythm")}: ${S.rhythm}${S.profile.name ? " · " + S.profile.name : ""}`);
   L.push(`Goals: ${S.profile.goals.map(i => window.TEXTS.en.goals[i]).join(", ") || "—"} · Habits: ${S.habits.join(", ") || "—"}`);
   L.push("");
-  const days = new Set([...S.fasts.map(f => dayKey(f.end)), ...Object.keys(S.notes), ...Object.keys(S.habitLog)]);
+  const days = new Set([...S.fasts.map(f => dayKey(f.end)), ...Object.keys(S.notes), ...Object.keys(S.habitLog), ...Object.keys(S.energy || {})]);
+  if (S.cycle && S.cycle.on) L.push(`Cycle: ${S.cycle.mode}, ${S.cycle.length}d, period ${S.cycle.periodLen}d, starts: ${(S.cycle.periods || []).join(", ")}`);
   [...days].sort().forEach(k => {
     const f = S.fasts.filter(x => dayKey(x.end) === k);
     L.push(`■ ${k}`);
     f.forEach(x => { L.push(`  ${hm(x.start)}–${hm(x.end)} · ${durLong(x.end - x.start)} / ${x.goal}h · ${counted(x) ? "✓" : "<10h"}`); (x.moments || []).forEach(m => L.push(`    ${momentText(m)}`)); });
     const log = S.habitLog[k]; if (log) { const hs = HABITS.filter(h => habitDone(h, log)); if (hs.length || log.water) L.push(`  ${t("habitsLbl")}: ${hs.map(h => tx.habits[h][0]).join(", ")}${log.water ? ` (${log.water}×💧)` : ""}`); }
     if (S.notes[k]) L.push(`  ${t("note")}: ${S.notes[k]}`);
+    const xci = cycleInfo(keyToDate(k).getTime() + 12 * H), xen = (S.energy || {})[k];
+    if ((xci && xci.phase) || xen) L.push(`  ${xci && xci.phase ? window.TEXTS.en["phase_" + xci.phase] + " d" + xci.day : ""}${xen ? " · energy " + xen + "/3" : ""}`);
   });
   if (S.current) L.push(`\n${t("inProgress")}: ${hm(S.current.start)} · ${durLong(Date.now() - S.current.start)}`);
   return L.join("\n");
