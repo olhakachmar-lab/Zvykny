@@ -399,21 +399,23 @@ function homeHTML() {
   </div>`;
 }
 function habitCardHTML() {
-  const today = dayKey(Date.now());
-  if (S.habits.includes("water")) {
-    const n = ((S.habitLog[today] || {}).water) || 0;
-    const drops = Array.from({ length: 8 }, (_, i) => `<button data-a="water" data-v="${i < n ? -1 : 1}" aria-label="${i < n ? "−" : "+"}">${svgIcon.drop("#3E7689", i < n ? "#3E7689" : "none")}</button>`).join("");
-    const v = (n * 0.2).toFixed(1).replace(".", S.lang === "uk" ? "," : ".");
-    return `<div class="habit-card"><div style="flex:1;min-width:0"><div class="row-between"><b>${t("waterToday")}</b><span class="cap" style="font-weight:600;color:var(--water)">${t("waterAmount", { v })}</span></div><div class="drops">${drops}</div></div><button class="plus water" data-a="water" data-v="1" aria-label="+">+</button></div>`;
+  const today = dayKey(Date.now()), log = S.habitLog[today] || {};
+  if (!S.habits.length) return `<button class="habit-card" data-a="sheet" data-v="addHabit"><div><b>${t("addHabit")}</b><span class="cap">${t("addHabitSub")}</span></div><span class="plus">+</span></button>`;
+  let html = "";
+  for (const h of S.habits) {
+    if (h === "water") {
+      const n = log.water || 0;
+      const drops = Array.from({ length: 8 }, (_, i) => `<button data-a="water" data-v="${i < n ? -1 : 1}" aria-label="${i < n ? "−" : "+"}">${svgIcon.drop("#3E7689", i < n ? "#3E7689" : "none")}</button>`).join("");
+      const v = (n * 0.2).toFixed(1).replace(".", S.lang === "uk" ? "," : ".");
+      html += `<div class="habit-card"><div style="flex:1;min-width:0"><div class="row-between"><b>${t("waterToday")}</b><span class="cap" style="font-weight:600;color:var(--water)">${t("waterAmount", { v })}</span></div><div class="drops">${drops}</div></div><button class="plus water" data-a="water" data-v="1" aria-label="+">+</button></div>`;
+    } else {
+      const done = !!log[h];
+      html += `<button class="habit-card habit-row ${done ? "on" : ""}" data-a="toggleHabitToday" data-v="${h}" role="switch" aria-checked="${done}"><span style="display:flex;gap:12px;align-items:center">${svgIcon.habit[h]}<span><b>${t("habits")[h][0]}</b><span class="cap">${done ? t("doneToday") : t("tapWhenDone")}</span></span></span><span class="radio check">${done ? svgIcon.check : ""}</span></button>`;
+    }
   }
-  if (S.habits.length) {
-    const log = S.habitLog[today] || {};
-    const n = S.habits.filter(h => log[h]).length;
-    return `<button class="habit-card" data-a="sheet" data-v="checkin"><div><b>${S.habits.map(h => t("habits")[h][0]).join(" · ")}</b><span class="cap">${t("eveningCheck")}</span></div><span class="cap" style="font-weight:600">${n}/${S.habits.length}</span></button>`;
-  }
-  return `<button class="habit-card" data-a="sheet" data-v="addHabit"><div><b>${t("addHabit")}</b><span class="cap">${t("addHabitSub")}</span></div><span class="plus">+</span></button>`;
+  if (S.habits.length < 3) html += `<button class="add-row" data-a="sheet" data-v="addHabit"><span>+ ${t("addHabit")}</span><span>${t("ofN", { n: S.habits.length })}</span></button>`;
+  return `<div class="habits-stack">${html}</div>`;
 }
-
 /* ---------- struggle ---------- */
 function struggleHTML() {
   const c = S.current; if (!c) return homeHTML();
