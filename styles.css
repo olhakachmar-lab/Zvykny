@@ -229,3 +229,4 @@ button.nm{text-align:left}
 .mini-step{width:32px;height:32px;border-radius:50%;background:var(--sunken);font-size:18px}
 .day.pd::before,.day.pp::before{content:"";position:absolute;bottom:2px;left:50%;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#C9846F}
 .day.pp::before{background:none;box-shadow:inset 0 0 0 1.2px #C9846F}
+.chips span .ph-dot{padding:0;border:0;width:8px;height:8px;vertical-align:middle}
