@@ -401,6 +401,7 @@ const SCREENS = {
       <div class="grow" style="min-height:20px"></div>
       <button class="btn" data-a="go" data-v="home">${t("done")}</button>
       <button class="link" data-a="go" data-v="rhythmPage">${t("seeRhythm")}</button>
+      <div style="display:flex;justify-content:center;gap:18px;margin-top:-4px"><button class="smalllink saved" style="padding-left:0" data-a="editTimes" data-v="${f.id}">${t("resultChange")}</button>${Date.now() - (f.endedAt || f.end) < 15 * MIN ? `<button class="smalllink" data-a="undoEnd" data-v="${f.id}">${t("resultUndo")}</button>` : ""}</div>
       <div class="info-strip" style="margin-top:6px"><div><span class="label">${t("started")}</span><b>${hm(f.start)}</b></div><div><span class="label">${t("goal")}</span><b>${hrs(f.goal)}</b></div><div><span class="label">${reached ? t("completed") : t("ended")}</span><b class="acc">${hm(f.end)}</b></div></div>
     </div>`;
   },
@@ -446,7 +447,7 @@ function homeHTML() {
     ring = ringSVG(290, st.el / st.goal, st.c.goal, "fast");
     center = reached ? `<div class="timer" id="liveTimer">${timerHTML(st.el)}</div><div class="ring-sub">${t("goalReachedSub", { time: hm(st.c.start + st.goal) })}</div>`
       : `<div class="timer" id="liveTimer">${timerHTML(st.goal - st.el)}</div><div class="ring-sub">${t("left", { time: hm(st.c.start + st.goal) })}</div>`;
-    main = reached ? `<button class="btn" data-a="endFast">${t("completeFast")}</button>`
+    main = reached ? `<button class="btn" data-a="sheet" data-v="endConfirm">${t("completeFast")}</button>`
       : `<button class="btn secondary" data-a="go" data-v="struggle">${t("struggling")}</button><button class="link" data-a="sheet" data-v="endConfirm">${t("endFast")}</button>`;
     strip = `<div><span class="label">${t("started")}</span><b>${hm(st.c.start)}</b></div><div><span class="label">${t("goal")}</span><b>${hrs(st.c.goal)}</b></div><div><span class="label">${t("ends")}</span><b class="acc">${hm(st.c.start + st.goal)}</b></div>`;
   } else if (st.mode === "eat") {
@@ -473,6 +474,7 @@ function homeHTML() {
     <div class="today-row"><span class="label">${t("today")}</span><button class="smalllink ${noteSaved ? "saved" : ""}" data-a="sheet" data-v="note">${noteSaved ? t("noteSaved") : t("noteLink")}</button></div>
     ${habitCardHTML()}
     ${energyRow()}
+    ${nudgeHTML(st.mode)}
     <div style="margin-top:12px">${main}</div>
     <div class="info-strip" style="margin-top:16px">${strip}</div>
   </div>`;
@@ -625,13 +627,7 @@ const SHEETS = {
       <button class="btn" data-a="startFast">${t("startFast")}</button>
       <button class="link" data-a="closeSheet">${t("cancel")}</button>`;
   },
-  endConfirm() {
-    const c = S.current; if (!c) return "";
-    const el = Date.now() - c.start;
-    return `<h2>${t("endTitle")}</h2><p class="sub">${el >= COUNT_MIN_H * H ? t("endTextCounts", { done: dur(el), goal: hrs(c.goal) }) : t("endTextShort", { done: dur(el), goal: hrs(c.goal) })}</p>
-      <button class="btn" data-a="keepGoing">${t("keepGoing")}</button>
-      <button class="link" data-a="endFast">${t("endFast")}</button>`;
-  },
+  endConfirm() { return endWhenHTML(); },
   note(p) {
     const k = p.day || dayKey(Date.now());
     const isToday = k === dayKey(Date.now());
@@ -688,17 +684,7 @@ const SHEETS = {
       <button class="link muted" data-a="sheet" data-v="cycle">${t("cycleSettings")}</button>
       <p class="cap" style="text-align:center;margin-top:4px">${t("tipsDisclaimer")}</p>`;
   },
-  lateEnd() {
-    const c = S.current; if (!c) return "";
-    const goalEnd = c.start + c.goal * H, sel = tmp.lateSel || 0;
-    const opts = [[t("atGoal", { time: hm(goalEnd) }), goalEnd], [t("rightNow"), Date.now()]];
-    return `<h2>${t("lateTitle")}</h2><p class="sub">${t("lateSub", { done: dur(Date.now() - c.start), time: hm(goalEnd) })}</p>
-      <div class="stack">${opts.map(([lab], i) => `<button class="choice ${sel === i ? "on" : ""}" data-a="lateSel" data-v="${i}"><span>${lab}</span><span class="radio"></span></button>`).join("")}
-      <label class="choice ${sel === 2 ? "on" : ""}" data-a="lateSel" data-v="2"><span>${t("otherTime")}</span><span style="display:flex;gap:10px;align-items:center"><input type="time" id="lateTime" value="${tmp.lateTime || hm(goalEnd)}" style="border:0;background:var(--sunken);border-radius:10px;padding:6px 8px;font-size:15px"><span class="radio"></span></span></label></div>
-      <div style="height:18px"></div>
-      <button class="btn" data-a="lateSave">${t("endFast")}</button>
-      <button class="link" data-a="closeSheet">${t("stillFasting")}</button>`;
-  },
+  lateEnd() { return endWhenHTML(); },
   autoEnded(p) {
     const f = S.fasts.find(x => x.id === p.id); if (!f) return "";
     return `<h2>${t("autoTitle")}</h2><p class="sub">${t("autoSub", { h: CAP_H, time: hm(f.end) })}</p>
@@ -795,6 +781,38 @@ function dayHTML(k) {
 }
 
 /* ---------- actions ---------- */
+function endChoice() {
+  const c = S.current; if (!c) return null;
+  const now = Date.now(), goalEnd = c.start + c.goal * H, late = now > goalEnd;
+  const sel = tmp.endSel || (late && now - goalEnd > 2 * H ? "goal" : "now");
+  let end = now, err = "";
+  if (sel === "goal") end = Math.min(goalEnd, now);
+  if (sel === "other") { let x = atTime(now, tmp.endTime || hm(late ? goalEnd : now)); if (x > now) x -= DAY; end = x; if (end <= c.start) err = t("endBeforeStart", { time: hm(c.start) }); }
+  return { c, now, goalEnd, late, sel, end, err };
+}
+function endWhenHTML() {
+  const e = endChoice(); if (!e) return "";
+  const { c, now, goalEnd, late, sel, end, err } = e;
+  const d = end - c.start, cnt = d >= COUNT_MIN_H * H;
+  const opt = (k, lab) => `<button class="choice ${sel === k ? "on" : ""}" data-a="endSel" data-v="${k}"><span>${lab}</span><span class="radio"></span></button>`;
+  return `<h2>${t("endWhenTitle")}</h2><p class="sub">${late ? t("lateSub", { done: dur(now - c.start), time: hm(goalEnd) }) : t("endWhenSub")}</p>
+    <div class="stack">${late ? opt("goal", t("endGoalOpt", { time: hm(goalEnd) })) : ""}${opt("now", t("endNowOpt", { time: hm(now) }))}${opt("other", t("endOther"))}</div>
+    ${sel === "other" ? `<div class="time-field"><label for="endTime" class="cap">${t("endTimeLabel")}</label><input type="time" id="endTime" class="field" value="${tmp.endTime || hm(late ? goalEnd : now)}"></div>` : ""}
+    <div class="end-summary ${err ? "bad" : ""}" id="endSummary">${err || `${hm(c.start)} → ${dateLabel(end)} ${hm(end)} · <b>${durLong(d)}</b> · ${cnt ? t("countsYes") : t("countsNo")}`}</div>
+    <button class="btn" data-a="endSave" ${err ? "disabled" : ""}>${t("endConfirmBtn")}</button>
+    <button class="link" data-a="closeSheet">${t("keepFasting")}</button>`;
+}
+function dateLabel(ts) { const k = dayKey(ts); return k === dayKey(Date.now()) ? t("todayLow") : k === dayKey(Date.now() - DAY) ? t("yesterdayLow") : dateShort(new Date(ts)); }
+function lastDinnerSlot() { const now = Date.now(); let ld = atTime(now, S.profile.dinner || "20:00"); if (ld > now) ld -= DAY; return ld; }
+function nudgeHTML(mode) {
+  if (mode !== "eat" && mode !== "ready") return "";
+  const now = Date.now(), ld = lastDinnerSlot(), last = S.fasts[S.fasts.length - 1];
+  const forgot = now - ld > 20 * MIN && now - ld < 10 * H && !(last && last.end > ld);
+  let html = "";
+  if (forgot) html += `<div class="nudge"><div style="flex:1"><b>${t("forgotTitle")}</b><div class="cap">${t("forgotSub", { time: hm(ld) })}</div></div><button class="btn small" data-a="startAt" data-v="${ld}">${t("forgotBtn", { time: hm(ld) })}</button></div>`;
+  if (!S.calAdded || calOutdated()) html += `<div class="nudge soft"><div style="flex:1"><b>${t(calOutdated() ? "calUpdateShort" : "remindStartTitle", { time: S.profile.dinner })}</b><div class="cap">${t("remindStartSub")}</div></div><button class="btn small secondary" data-a="addCal">${t("remindStartBtn")}</button></div>`;
+  return html;
+}
 function readCycForm() { const l = document.getElementById("cycLast"); if (l && l.value && tmp.cyc) tmp.cyc.last = l.value > dayKey(Date.now()) ? dayKey(Date.now()) : l.value; }
 function rerenderCyc() { if (sheet && sheet.name === "cycle") renderSheet(false); else render(); }
 function startFast(start, goalOverride) {
@@ -806,7 +824,7 @@ function endFast(reason, endTs, quiet) {
   const end = Math.max(c.start + MIN, Math.min(Date.now(), endTs || Date.now()));
   if (reason === "unwell") c.moments.push({ t: end, k: "unwell" });
   if (reason === "auto") c.moments.push({ t: end, k: "auto" });
-  const f = { id: "f" + Date.now(), start: c.start, end, goal: c.goal, rhythm: c.rhythm, moments: c.moments };
+  const f = { id: "f" + Date.now(), start: c.start, end, goal: c.goal, rhythm: c.rhythm, moments: c.moments, endedAt: Date.now() };
   S.fasts.push(f); S.current = null; save(); scheduleNotifs();
   if (quiet) return f;
   sheet = null; sheetsEl.innerHTML = "";
@@ -823,7 +841,7 @@ function checkOverrun() {
     viewStack.length = 0; V = { view: "home", params: {} }; render();
     openSheet("autoEnded", { id: f.id });
   } else if (now - goalEnd > 2 * H && !c.askedLate) {
-    c.askedLate = true; save(); tmp.lateSel = 0; openSheet("lateEnd");
+    c.askedLate = true; save(); tmp.endSel = null; tmp.endTime = null; openSheet("lateEnd");
   }
 }
 let notifTimers = [];
@@ -845,7 +863,7 @@ function finishOnboarding() { S.onboarded = true; save(); viewStack.length = 0; 
 const ACTIONS = {
   back() { back(); },
   go(v) { go(v); },
-  sheet(v) { if (v === "rhythm") tmp.pickRhythm = S.rhythm; if (v === "startTime") { tmp.startSel = 0; tmp.customTime = null; tmp.useSuggest = null; } if (v === "cycle") tmp.cyc = null; if (v === "addHabit") tmp.habitSel = null; if (v === "checkin") tmp.check = null; if (sheet) { sheet = { name: v, params: {} }; renderSheet(false); } else openSheet(v); },
+  sheet(v) { if (v === "endConfirm" || v === "lateEnd") { tmp.endSel = null; tmp.endTime = null; } if (v === "rhythm") tmp.pickRhythm = S.rhythm; if (v === "startTime") { tmp.startSel = 0; tmp.customTime = null; tmp.useSuggest = null; } if (v === "cycle") tmp.cyc = null; if (v === "addHabit") tmp.habitSel = null; if (v === "checkin") tmp.check = null; if (sheet) { sheet = { name: v, params: {} }; renderSheet(false); } else openSheet(v); },
   closeSheet() { closeSheet(); },
   lang(v) { S.lang = v; document.documentElement.lang = v === "uk" ? "uk" : "en"; save(); render(); if (sheet) renderSheet(false); },
   already() { tmp.already = true; S.flowAlready = true; go("safety"); },
@@ -905,6 +923,10 @@ const ACTIONS = {
   saveSettings() { const n = document.getElementById("setName"); if (n) { S.profile.name = n.value.trim(); save(); } closeSheet(); render(); },
   shareLog() { sheet = { name: "log", params: {} }; renderSheet(false); },
   addCal() { addToCalendar(); },
+  endSel(v) { tmp.endSel = v; const f = document.getElementById("endTime"); if (f) tmp.endTime = f.value; renderSheet(false); if (v === "other") setTimeout(() => { const i = document.getElementById("endTime"); if (i) { i.focus(); try { i.showPicker && i.showPicker(); } catch (e) {} } }, 60); },
+  endSave() { const f = document.getElementById("endTime"); if (f) tmp.endTime = f.value; const e = endChoice(); if (!e || e.err) return; tmp.endSel = null; tmp.endTime = null; endFast(null, e.end); },
+  startAt(v) { startFast(+v); render(); toast(t("startedAt", { time: hm(+v) })); },
+  undoEnd(id) { const i = S.fasts.findIndex(x => x.id === id); if (i < 0) return; const f = S.fasts[i]; S.fasts.splice(i, 1); S.current = { start: f.start, goal: f.goal, rhythm: f.rhythm, moments: (f.moments || []).filter(m => m.k !== "unwell" && m.k !== "auto"), askedLate: true }; save(); scheduleNotifs(); viewStack.length = 0; go("home", {}, { replace: true }); toast(t("undone")); },
   lateSel(v) { tmp.lateSel = +v; const lt = document.getElementById("lateTime"); if (lt) tmp.lateTime = lt.value; renderSheet(false); },
   lateSave() {
     const c = S.current; if (!c) return closeSheet();
@@ -990,8 +1012,12 @@ document.addEventListener("click", e => {
   const fn = ACTIONS[el.dataset.a]; if (!fn) return;
   e.preventDefault(); fn(el.dataset.v);
 });
+document.addEventListener("input", e => {
+  if (e.target.id === "endTime") { tmp.endTime = e.target.value; const el = document.getElementById("endSummary"), btn = document.querySelector('[data-a="endSave"]'); const x = endChoice(); if (el && x) { const d = x.end - x.c.start; el.className = "end-summary" + (x.err ? " bad" : ""); el.innerHTML = x.err || `${hm(x.c.start)} → ${dateLabel(x.end)} ${hm(x.end)} · <b>${durLong(d)}</b> · ${d >= COUNT_MIN_H * H ? t("countsYes") : t("countsNo")}`; if (btn) btn.disabled = !!x.err; } }
+});
 document.addEventListener("change", e => {
   if (e.target.id === "customTime") { tmp.customTime = e.target.value; tmp.startSel = 3; renderSheet(false); }
+  if (e.target.id === "endTime") { tmp.endTime = e.target.value; renderSheet(false); }
   if (e.target.id === "lateTime") { tmp.lateTime = e.target.value; tmp.lateSel = 2; renderSheet(false); }
   if (e.target.id === "editStart" || e.target.id === "editEnd") { tmp.editStart = document.getElementById("editStart").value; tmp.editEnd = document.getElementById("editEnd").value; renderSheet(false); }
 });

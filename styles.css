@@ -230,3 +230,11 @@ button.nm{text-align:left}
 .day.pd::before,.day.pp::before{content:"";position:absolute;bottom:2px;left:50%;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#C9846F}
 .day.pp::before{background:none;box-shadow:inset 0 0 0 1.2px #C9846F}
 .chips span .ph-dot{padding:0;border:0;width:8px;height:8px;vertical-align:middle}
+
+.time-field{margin-top:12px}.time-field .field{margin-top:6px;font-size:22px;text-align:center;padding:12px}
+.end-summary{margin:16px 0 14px;padding:12px 14px;border-radius:14px;background:var(--accent-subtle);color:var(--ink);font-size:14px;text-align:center}
+.end-summary.bad{background:var(--clay-bg);color:var(--clay)}
+.nudge{display:flex;gap:12px;align-items:center;margin-top:10px;padding:14px 16px;border-radius:18px;background:var(--clay-bg)}
+.nudge.soft{background:var(--surface);border:1px solid var(--line)}
+.nudge b{font-size:15px;font-weight:600;display:block}
+.btn.small{width:auto;min-height:40px;padding:0 16px;font-size:14px;flex:none}
